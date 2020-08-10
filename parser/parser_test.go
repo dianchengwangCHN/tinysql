@@ -371,6 +371,9 @@ func (s *testParserSuite) TestDMLStmt(c *C) {
 
 		// from join
 		{"SELECT * from t1, t2, t3", true, "SELECT * FROM ((`t1`) JOIN `t2`) JOIN `t3`"},
+		{"select * from t1 join t2", true, "SELECT * FROM `t1` JOIN `t2`"},
+		{"select * from t1 join t2 on t1.id = t2.id", true, "SELECT * FROM `t1` JOIN `t2` ON `t1`.`id` = `t2`.`id`"},
+		{"select * from t1 left join t2 on t1.id = t2.id", true, "SELECT * FROM `t1` LEFT JOIN `t2` ON `t1`.`id` = `t2`.`id`"},
 		{"select * from t1 join t2 left join t3 on t2.id = t3.id", true, "SELECT * FROM (`t1` JOIN `t2`) LEFT JOIN `t3` ON `t2`.`id`=`t3`.`id`"},
 		{"select * from t1 right join t2 on t1.id = t2.id left join t3 on t3.id = t2.id", true, "SELECT * FROM (`t1` RIGHT JOIN `t2` ON `t1`.`id`=`t2`.`id`) LEFT JOIN `t3` ON `t3`.`id`=`t2`.`id`"},
 		{"select * from t1 right join t2 on t1.id = t2.id left join t3", false, ""},
