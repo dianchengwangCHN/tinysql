@@ -150,7 +150,7 @@ func checkTableExistAndCancelNonExistJob(t *meta.Meta, job *model.Job, schemaID 
 	if infoschema.ErrDatabaseNotExists.Equal(err) || infoschema.ErrTableNotExists.Equal(err) {
 		job.State = model.JobStateCancelled
 	}
-	return nil, err
+	return tblInfo, err
 }
 
 func getTableInfo(t *meta.Meta, tableID, schemaID int64) (*model.TableInfo, error) {
