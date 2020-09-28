@@ -852,5 +852,31 @@ func (r *MergeAggregationProjection) Match(old *memo.ExprIter) bool {
 // It will transform `Aggregation->Projection->X` to `Aggregation->X`.
 func (r *MergeAggregationProjection) OnTransform(old *memo.ExprIter) (newExprs []*memo.GroupExpr, eraseOld bool, eraseAll bool, err error) {
 	// TODO: implement the body according to the header comment.
-	return []*memo.GroupExpr{old.GetExpr()}, false, false, nil
+	oldAgg := old.GetExpr().ExprNode.(*plannercore.LogicalAggregation)
+	proj := old.Children[0].GetExpr().ExprNode.(*plannercore.LogicalProjection)
+	projSchema := old.Children[0].GetExpr().Schema()
+
+	groupByItems := make([]expression.Expression, len(oldAgg.GroupByItems))
+	for i, item := range oldAgg.GroupByItems {
+		groupByItems[i] = expression.ColumnSubstitute(item, projSchema, proj.Exprs)
+	}
+
+	aggFuncs := make([]*aggregation.AggFuncDesc, len(oldAgg.AggFuncs))
+	for i, aggFunc := range oldAgg.AggFuncs {
+		aggFuncs[i] = aggFunc.Clone()
+		newArgs := make([]expression.Expression, len(aggFunc.Args))
+		for j, arg := range aggFunc.Args {
+			newArgs[j] = expression.ColumnSubstitute(arg, projSchema, proj.Exprs)
+		}
+		aggFuncs[i].Args = newArgs
+	}
+
+	newAgg := plannercore.LogicalAggregation{
+		GroupByItems: groupByItems,
+		AggFuncs:     aggFuncs,
+	}.Init(oldAgg.SCtx())
+
+	newAggExpr := memo.NewGroupExpr(newAgg)
+	newAggExpr.SetChildren(old.Children[0].GetExpr().Children...)
+	return []*memo.GroupExpr{newAggExpr}, true, false, nil
 }
