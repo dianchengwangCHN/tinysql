@@ -14,8 +14,11 @@
 package statistics
 
 import (
+	"math"
 	"reflect"
+	"sort"
 
+	"github.com/cznic/sortutil"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/tablecodec"
@@ -50,6 +53,12 @@ func (c *CMSketch) InsertBytes(bytes []byte) {
 // insertBytesByCount adds the bytes value into the TopN (if value already in TopN) or CM Sketch by delta, this does not updates c.defaultValue.
 func (c *CMSketch) insertBytesByCount(bytes []byte, count uint64) {
 	// TODO: implement the insert method.
+	h1, h2 := murmur3.Sum128(bytes)
+	c.count += count
+	for i := range c.table {
+		j := (h1 + h2*uint64(i)) % uint64(c.width)
+		c.table[i][j] += uint32(count)
+	}
 }
 
 func (c *CMSketch) queryValue(sc *stmtctx.StatementContext, val types.Datum) (uint64, error) {
@@ -68,7 +77,36 @@ func (c *CMSketch) QueryBytes(d []byte) uint64 {
 
 func (c *CMSketch) queryHashValue(h1, h2 uint64) uint64 {
 	// TODO: implement the query method.
-	return uint64(0)
+	// Follow the approach used in paper 'new Estimation Algorithms for Streaming
+	// Data: Count-min Can Do More'.
+	min := uint32(math.MaxUint32)
+	estimates := make([]uint32, c.depth)
+	base := uint32(1)
+	for i := range c.table {
+		j := (h1 + h2*uint64(i)) % uint64(c.width)
+		val := c.table[i][j]
+		if val < min {
+			min = val
+		}
+		noise := uint32((c.count - uint64(val)) / uint64(c.width-1))
+		if val == 0 {
+			estimates[i] = 0
+		} else if val < noise {
+			estimates[i] = base
+		} else {
+			estimates[i] = val - noise + base
+		}
+	}
+	sort.Sort(sortutil.Uint32Slice(estimates))
+	res := (estimates[c.depth/2] + estimates[(c.depth-1)/2]) / 2
+	if res == 0 {
+		return uint64(0)
+	}
+	if res > min+base {
+		res = min + base
+	}
+	res = res - base
+	return uint64(res)
 }
 
 // MergeCMSketch merges two CM Sketch.
