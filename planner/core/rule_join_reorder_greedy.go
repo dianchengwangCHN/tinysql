@@ -51,11 +51,13 @@ func (s *joinReorderGreedySolver) solve(joinNodePlans []LogicalPlan) (LogicalPla
 			cumCost: s.baseNodeCumCost(node),
 		})
 	}
+	// So the groups with smallest cost will be joined first.
 	sort.SliceStable(s.curJoinGroup, func(i, j int) bool {
 		return s.curJoinGroup[i].cumCost < s.curJoinGroup[j].cumCost
 	})
 
 	var cartesianGroup []LogicalPlan
+	// Join as many nodes as possible, and then move them from s.curJoinGroup to cartesianGroup.
 	for len(s.curJoinGroup) > 0 {
 		newNode, err := s.constructConnectedJoinTree()
 		if err != nil {
@@ -71,11 +73,13 @@ func (s *joinReorderGreedySolver) constructConnectedJoinTree() (*jrNode, error) 
 	curJoinTree := s.curJoinGroup[0]
 	s.curJoinGroup = s.curJoinGroup[1:]
 	for {
+		// This loop tries to join as many nodes as possible
 		bestCost := math.MaxFloat64
 		bestIdx := -1
 		var finalRemainOthers []expression.Expression
 		var bestJoin LogicalPlan
 		for i, node := range s.curJoinGroup {
+			// Iterate all the possible cases an find out the best one.
 			newJoin, remainOthers := s.checkConnectionAndMakeJoin(curJoinTree.p, node.p)
 			if newJoin == nil {
 				continue

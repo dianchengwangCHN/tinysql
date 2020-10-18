@@ -106,11 +106,16 @@ func (s *joinReOrderSolver) optimizeRecursive(ctx sessionctx.Context, p LogicalP
 type baseSingleGroupJoinOrderSolver struct {
 	ctx          sessionctx.Context
 	curJoinGroup []*jrNode
-	otherConds   []expression.Expression
+	// What does otherConds mean? And what is them used for?
+	otherConds []expression.Expression
 }
 
 // baseNodeCumCost calculate the cumulative cost of the node in the join group.
 func (s *baseSingleGroupJoinOrderSolver) baseNodeCumCost(groupNode LogicalPlan) float64 {
+	// Why the cost is estimated in this way?
+	// Personal understanding is: to generate the final result, we need to scan through
+	// the rows in current plan, so the cost will be row count. And to genrate the intermediate plan,
+	// the cost is the sum of the cost to get all the intermediate plan.
 	cost := groupNode.statsInfo().RowCount
 	for _, child := range groupNode.Children() {
 		cost += s.baseNodeCumCost(child)
@@ -121,6 +126,7 @@ func (s *baseSingleGroupJoinOrderSolver) baseNodeCumCost(groupNode LogicalPlan) 
 // makeBushyJoin build bushy tree for the nodes which have no equal condition to connect them.
 func (s *baseSingleGroupJoinOrderSolver) makeBushyJoin(cartesianJoinGroup []LogicalPlan) LogicalPlan {
 	resultJoinGroup := make([]LogicalPlan, 0, (len(cartesianJoinGroup)+1)/2)
+	// Brute force approach to join all groups.
 	for len(cartesianJoinGroup) > 1 {
 		resultJoinGroup = resultJoinGroup[:0]
 		for i := 0; i < len(cartesianJoinGroup); i += 2 {
@@ -128,9 +134,13 @@ func (s *baseSingleGroupJoinOrderSolver) makeBushyJoin(cartesianJoinGroup []Logi
 				resultJoinGroup = append(resultJoinGroup, cartesianJoinGroup[i])
 				break
 			}
+			// Why joining the two groups together?
+			// So this is basically join the group until all groups are merged to one plan.
 			newJoin := s.newCartesianJoin(cartesianJoinGroup[i], cartesianJoinGroup[i+1])
 			for i := len(s.otherConds) - 1; i >= 0; i-- {
 				cols := expression.ExtractColumns(s.otherConds[i])
+				// So if s.otherConds[i] can be merged into the join,
+				// then merge it to join and remove it from otherConds.
 				if newJoin.schema.ColumnsIndices(cols) != nil {
 					newJoin.OtherConditions = append(newJoin.OtherConditions, s.otherConds[i])
 					s.otherConds = append(s.otherConds[:i], s.otherConds[i+1:]...)
