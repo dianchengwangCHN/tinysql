@@ -88,5 +88,26 @@ func (b *builtinLengthSig) vectorized() bool {
 // See https://dev.mysql.com/doc/refman/5.7/en/string-functions.html
 func (b *builtinLengthSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) error {
 	/* Your code here */
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get(types.ETString, n)
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalString(b.ctx, input, buf); err != nil {
+		return err
+	}
+	// The row based evalInt returns int64 for length, so the result should also return int64
+	result.ResizeInt64(n, false)
+	// Merge the bitmap
+	result.MergeNulls(buf)
+	i64s := result.Int64s()
+	for i := 0; i < n; i++ {
+		if result.IsNull(i) {
+			continue
+		}
+		str := buf.GetBytes(i)
+		i64s[i] = int64(len(str))
+	}
 	return nil
 }
